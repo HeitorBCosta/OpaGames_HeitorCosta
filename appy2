@@ -1,0 +1,110 @@
+import asyncio
+import websockets
+import redis
+import json
+
+# Conexão com o servidor Redis
+#Essa linha de código em Python está criando um objeto cliente para interagir com um banco de dados Redis.
+
+redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+
+#redis: API para interagir com o banco de dados Redis.
+#StrictRedis: classe fornecida pelo Redis que implementa um cliente Redis. A versão "Strict" é a mais recomendada.
+#host='localhost': Especifica o host onde o servidor Redis está em execução. Neste caso, está configurado para 'localhost'.
+#Se o servidor estiver em uma máquina diferente, você deve fornecer o endereço IP ou nome do host dessa máquina.
+
+#port=6379: Especifica a porta na qual o servidor Redis está escutando. O valor padrão para o Redis é 6379, 
+#mas se o seu servidor estiver configurado para escutar em uma porta diferente, você precisará ajustar esse valor.
+
+#db=0: Indica o número do banco de dados Redis que o cliente deve selecionar após a conexão. O Redis suporta múltiplos bancos de dados, numerados de 0 a N-1, onde N é o número máximo de bancos de dados suportados (geralmente 16 por padrão). 
+#Este exemplo seleciona o banco de dados 0.
+
+
+# Lista para armazenar conexões de jogadores
+players = set()
+
+async def broadcast(message, sender):
+    # Envia a mensagem para todos os jogadores, exceto o remetente
+    for player in players:
+        if player != sender:
+            await player.send(message)
+# a função broadcast projetada para enviar uma mensagem para todos os jogadores, exceto o remetente, de forma assíncrona. O código usa a palavra-chave await 
+#para permitir operações assíncronas, garantindo que a execução do programa não seja bloqueada enquanto a mensagem é enviada para cada jogador.
+            
+async def update_player_position(player_id, position):
+    # Atualiza a posição do jogador no Redis
+    player_data = {'position': position}
+    redis_client.hset('players', player_id, json.dumps(player_data))
+
+ #função update_player_position é usada para atualizar a posição de um jogador no banco de dados Redis. 
+#O código usa o Redis como um mecanismo de armazenamento para manter as informações 
+#do jogador, e a operação é realizada de forma assíncrona, o que significa que não bloqueará a execução do programa enquanto atualiza os dados no Redis.
+
+
+async def get_player_positions():
+    # Obtém as posições de todos os jogadores no Redis
+    player_positions = {}
+    players_data = redis_client.hgetall('players')
+    for player_id, data in players_data.items():
+        player_data = json.loads(data)
+        player_positions[player_id.decode()] = player_data.get('position')
+    return player_positions
+
+ #a função update_player_position é usada para atualizar a posição de um jogador no banco de dados Redis
+
+
+async def handler(websocket, path):
+    # Adiciona o novo jogador à lista
+    players.add(websocket)
+    player_id = str(id(websocket))  
+    print(f"Novo jogador conectado. ID do jogador: {player_id}")
+
+#função handler é responsável por lidar com eventos associados a novas conexões WebSocket
+
+    try:
+        # Mantém a conexão aberta enquanto o servidor estiver em execução
+        async for message in websocket:
+            # processaa as mensagens recebidas dos jogadores
+            # e envia as atualizações necessárias para todos os jogadores
+            print(f"Recebido: {message}")
+
+            # Exemplo: Envia a mensagem recebida para todos os jogadores
+            await broadcast(message, websocket)
+
+            # Exemplo: Atualiza a posição do jogador no Redis
+            position = json.loads(message).get('position')
+            if position:
+                await update_player_position(player_id, position)
+
+            # Exemplo: Obtém as posições de todos os jogadores no Redis
+            all_positions = await get_player_positions()
+            print(f"Posições dos jogadores: {all_positions}")
+
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    finally:
+        # Remove o jogador quando a conexão é fechada
+        players.remove(websocket)
+        await update_player_position(player_id, None)  # Pode definir a posição como None ou remover a entrada no Redis
+        print(f"Jogador desconectado. ID do jogador: {player_id}")
+
+#esse código trata eventos em uma conexão WebSocket, processa mensagens recebidas, atualiza a posição do jogador no Redis e trata a desconexão do jogador. 
+#O bloco finally é útil para garantir que certas ações sejam realizadas, independentemente de exceções ocorrerem ou não
+
+#esse código trata eventos em uma conexão WebSocket, processa mensagens recebidas, atualiza a posição do jogador no Redis e trata a desconexão do jogador.
+
+if __name__ == "__main__":
+    # Configuração do servidor WebSocket na porta 8765
+    start_server = websockets.serve(handler, "localhost", 8765)
+
+    # Inicia o loop de eventos
+    asyncio.get_event_loop().run_until_complete(start_server)
+    asyncio.get_event_loop().run_forever()
+
+from pymongo import MongoClient
+
+# Conecta ao servidor MongoDB
+client = MongoClient("mongodb://localhost:27017")
+
+
+db = client.hec-desafio
